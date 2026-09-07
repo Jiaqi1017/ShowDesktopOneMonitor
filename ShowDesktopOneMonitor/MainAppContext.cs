@@ -35,6 +35,14 @@ namespace ShowDesktopOneMonitor
             KeyModifiers keyModifiers = SettingsManager.ReadKeyModifiers();
 
             HotKeyManager.RegisterHotKey(hotKey, keyModifiers);
+
+            // 原生接管 Win+D（覆盖系统默认的“显示桌面”），与上面的热键触发同一动作。
+            // 这样就不必再用 AHK 把 Win+D 重映射成 Win+Shift+D——两个键盘钩子
+            // 互相吞键/注入按键会打乱 Win 键状态，导致 Win 键“鬼压”。
+            if (!(hotKey == Keys.D && keyModifiers == KeyModifiers.Windows)) {
+                HotKeyManager.RegisterHotKey(Keys.D, KeyModifiers.Windows);
+            }
+
             HotKeyManager.HotKeyPressed += new EventHandler<HotKeyEventArgs>(OnHotkeyPressed);
         }
 
