@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Windows.Forms;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -37,11 +37,46 @@ namespace ShowDesktopOneMonitor
 
         private static void OnHotKeyPressed(HotKeyEventArgs e)
         {
+            if ((e.Modifiers & KeyModifiers.Windows) != 0)
+            {
+                // 延迟修复被卡住的 Win 键：
+                // 用 MOD_WIN 注册的热键触发后，如果处理过程中前台窗口被切换，
+                // Win 键的 key-up 事件可能丢失，系统会认为 Win 仍处于按下状态
+                // （之后按 D 会触发 Win+D）。延迟片刻后检查物理按键状态，
+                // 若已松开则补发 key-up 复位。
+                _stuckWinFixTimer.Change(StuckWinFixDelayMs, Timeout.Infinite);
+            }
+
             if (HotKeyManager.HotKeyPressed != null)
             {
                 HotKeyManager.HotKeyPressed(null, e);
             }
         }
+
+        private const int StuckWinFixDelayMs = 300;
+        private const byte VK_LWIN = 0x5B;
+        private const byte VK_RWIN = 0x5C;
+        private const int KEYEVENTF_KEYUP = 0x0002;
+        private static readonly System.Threading.Timer _stuckWinFixTimer = new System.Threading.Timer(StuckWinFixTimerCallback);
+
+        private static void StuckWinFixTimerCallback(object state)
+        {
+            // 物理上仍按住则不干预，等真实的 key-up
+            if ((GetAsyncKeyState(VK_LWIN) & 0x8000) == 0)
+            {
+                keybd_event(VK_LWIN, 0, KEYEVENTF_KEYUP, 0);
+            }
+            if ((GetAsyncKeyState(VK_RWIN) & 0x8000) == 0)
+            {
+                keybd_event(VK_RWIN, 0, KEYEVENTF_KEYUP, 0);
+            }
+        }
+
+        [DllImport("user32.dll")]
+        private static extern short GetAsyncKeyState(byte vKey);
+
+        [DllImport("user32.dll")]
+        private static extern void keybd_event(byte bVk, byte bScan, int dwFlags, int dwExtraInfo);
 
         private static volatile MessageWindow _wnd;
         private static volatile IntPtr _hwnd;

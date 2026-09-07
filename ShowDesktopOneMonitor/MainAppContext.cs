@@ -1,6 +1,6 @@
-﻿using FrigoTab;
-using ShowDesktopOneMonitor.Properties;
+using FrigoTab;
 using System;
+using System.Drawing;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -22,7 +22,7 @@ namespace ShowDesktopOneMonitor
             AppDomain.CurrentDomain.UnhandledException += this.CurrentDomain_UnhandledException;
 
             trayIcon = new NotifyIcon() {
-                Icon = Resources.sde,
+                Icon = LoadTrayIcon(),
                 ContextMenu = new ContextMenu(new MenuItem[] {
                     new MenuItem("Exit", (s, e) => {trayIcon.Visible = false; Application.Exit(); }),
                 }),
@@ -41,6 +41,16 @@ namespace ShowDesktopOneMonitor
         private void OnHotkeyPressed(object sender, HotKeyEventArgs e)
         {
             OnShowDesktopKeyComb();
+        }
+
+        // 托盘图标直接以内嵌资源方式加载（替代 Resources.resx，避免旧式 resx
+        // 在 dotnet build 下触发的 GenerateResource 任务宿主问题）
+        private static Icon LoadTrayIcon ()
+        {
+            var asm = System.Reflection.Assembly.GetExecutingAssembly();
+            using (var stream = asm.GetManifestResourceStream("ShowDesktopOneMonitor.Resources.sde.ico")) {
+                return new Icon(stream);
+            }
         }
 
         private void OnShowDesktopKeyComb ()
