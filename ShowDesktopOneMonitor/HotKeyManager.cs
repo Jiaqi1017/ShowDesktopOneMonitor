@@ -69,31 +69,39 @@ namespace ShowDesktopOneMonitor
             }
         }
 
-        // ---- 修饰键状态跟踪（物理与注入按键都统计，仅忽略自注入的空按键） ----
-        private static bool _lwinDown, _rwinDown;
-        private static bool _lshiftDown, _rshiftDown;
-        private static bool _lctrlDown, _rctrlDown;
-        private static bool _laltDown, _raltDown;
+        // ---- 修饰键状态 ----
+        //
+        // 直接向系统查询实时状态 (GetAsyncKeyState)，不自己缓存布尔值。
+        //
+        // 为什么不缓存：低级键盘钩子在安全桌面（Win+L 锁屏、UAC 提权、
+        // Ctrl+Alt+Del）期间收不到任何按键事件。若锁屏时 Win 还按着，
+        // 松开 Win 的 key-up 会落在安全桌面、钩子永远看不到，缓存的
+        // “Win 按下”状态就此卡住；回到桌面后单按 D 会被误判为 Win+D
+        // （表现为：锁屏解锁后按 D 稳定触发“显示桌面”，其它键正常）。
+        // 改为每次现查系统真实状态，取丢事件也能自愈；注入按键（如 AHK
+        // 重映射）同样会反映到 GetAsyncKeyState，故原有行为不变。
+        private static bool IsKeyDown(uint vk)
+        {
+            return (GetAsyncKeyState((int)vk) & 0x8000) != 0;
+        }
 
-        private static bool IsWinDown { get { return _lwinDown || _rwinDown; } }
-        private static bool IsShiftDown { get { return _lshiftDown || _rshiftDown; } }
-        private static bool IsCtrlDown { get { return _lctrlDown || _rctrlDown; } }
-        private static bool IsAltDown { get { return _laltDown || _raltDown; } }
+        private static bool IsWinDown { get { return IsKeyDown(VK_LWIN) || IsKeyDown(VK_RWIN); } }
+        private static bool IsShiftDown { get { return IsKeyDown(VK_LSHIFT) || IsKeyDown(VK_RSHIFT); } }
+        private static bool IsCtrlDown { get { return IsKeyDown(VK_LCONTROL) || IsKeyDown(VK_RCONTROL); } }
+        private static bool IsAltDown { get { return IsKeyDown(VK_LMENU) || IsKeyDown(VK_RMENU); } }
 
-        /// <summary>若是修饰键则更新状态并返回 true（修饰键永远透传给系统）。</summary>
-        private static bool UpdateModifierState(uint vk, bool isDown, bool isUp)
+        /// <summary>是否为修饰键本身（修饰键永远透传给系统，不参与热键主键判定）。</summary>
+        private static bool IsModifierKey(uint vk)
         {
             switch (vk)
             {
-                case VK_LWIN: if (isDown) _lwinDown = true; if (isUp) _lwinDown = false; return true;
-                case VK_RWIN: if (isDown) _rwinDown = true; if (isUp) _rwinDown = false; return true;
-                case VK_LSHIFT: if (isDown) _lshiftDown = true; if (isUp) _lshiftDown = false; return true;
-                case VK_RSHIFT: if (isDown) _rshiftDown = true; if (isUp) _rshiftDown = false; return true;
-                case VK_LCONTROL: if (isDown) _lctrlDown = true; if (isUp) _lctrlDown = false; return true;
-                case VK_RCONTROL: if (isDown) _rctrlDown = true; if (isUp) _rctrlDown = false; return true;
-                case VK_LMENU: if (isDown) _laltDown = true; if (isUp) _laltDown = false; return true;
-                case VK_RMENU: if (isDown) _raltDown = true; if (isUp) _raltDown = false; return true;
-                default: return false;
+                case VK_LWIN: case VK_RWIN:
+                case VK_LSHIFT: case VK_RSHIFT:
+                case VK_LCONTROL: case VK_RCONTROL:
+                case VK_LMENU: case VK_RMENU:
+                    return true;
+                default:
+                    return false;
             }
         }
 
@@ -127,7 +135,7 @@ namespace ShowDesktopOneMonitor
                     bool isDown = msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN;
                     bool isUp = msg == WM_KEYUP || msg == WM_SYSKEYUP;
 
-                    if ((isDown || isUp) && !UpdateModifierState(kbd.vkCode, isDown, isUp))
+                    if ((isDown || isUp) && !IsModifierKey(kbd.vkCode))
                     {
                         if (isDown)
                         {
@@ -297,6 +305,9 @@ namespace ShowDesktopOneMonitor
 
         [DllImport("user32.dll")]
         private static extern bool PostMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+
+        [DllImport("user32.dll")]
+        private static extern short GetAsyncKeyState(int vKey);
 
         // 必须保持委托引用，防止被 GC 回收
         private static readonly LowLevelKeyboardProc _hookProcDelegate = HookProc;
